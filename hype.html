@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HYPE 周线 MA200</title>
+<style>
+  :root { --bg:#0f1117; --panel:#161a23; --line:#2a2e39; --text:#e6e8ee; --muted:#8a8f9c; --up:#26a69a; --down:#ef5350; --ma200:#f5c542; --ma50:#5b9cf5; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif; }
+  header { padding:20px 20px 8px; }
+  h1 { margin:0 0 4px; font-size:22px; }
+  .sub { color:var(--muted); font-size:13px; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; padding:12px 20px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+  .card .k { color:var(--muted); font-size:12px; }
+  .card .v { font-size:20px; font-weight:600; margin-top:2px; }
+  .pos { color:var(--up); } .neg { color:var(--down); }
+  .controls { display:flex; flex-wrap:wrap; gap:8px; padding:4px 20px 10px; }
+  .controls button { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:6px 12px; font-size:13px; cursor:pointer; }
+  .controls button.on { border-color:var(--ma200); color:var(--ma200); }
+  #chart { width:100%; height:calc(100vh - 260px); min-height:420px; }
+  #legend { position:absolute; left:28px; top:8px; z-index:3; font-size:12px; color:var(--muted); pointer-events:none; }
+  .wrap { position:relative; padding:0 8px; }
+  footer { color:var(--muted); font-size:12px; padding:10px 20px 24px; line-height:1.6; }
+  #err { color:var(--down); padding:0 20px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>HYPE 周线 K 线 · MA200</h1>
+  <div class="sub"><a href="index.html" style="color:#5b9cf5">← 比特币周线</a></div>
+  <div class="sub" id="meta">加载中…</div>
+</header>
+
+<div class="stats">
+  <div class="card"><div class="k">最新收盘</div><div class="v" id="s-close">—</div></div>
+  <div class="card"><div class="k">周线 MA200</div><div class="v" id="s-ma200">—</div><div class="k" id="s-ma200n"></div></div>
+  <div class="card"><div class="k">距 200 日均线</div><div class="v" id="s-dist">—</div></div>
+  <div class="card"><div class="k">200 日均线</div><div class="v" id="s-ma200d">—</div></div>
+  <div class="card"><div class="k">周线 MA50</div><div class="v" id="s-ma50">—</div></div>
+  <div class="card"><div class="k">200 日均线 四周变化</div><div class="v" id="s-slope">—</div></div>
+</div>
+
+<div class="controls">
+  <button id="b-log" class="on">对数坐标</button>
+  <button id="b-ma50" class="on">MA50</button>
+  <button id="b-all">全部</button>
+  <button id="b-1y">近 1 年</button>
+  <button id="b-6m">近半年</button>
+</div>
+<div id="err"></div>
+
+<div class="wrap">
+  <div id="legend"></div>
+  <div id="chart"></div>
+</div>
+
+<footer>
+  数据：Hyperliquid HYPE/USDC 现货日线，聚合为周线（周一 00:00 UTC 开盘），从 2024-11-29 上线开始。最新一根周线可能未收盘。<br />
+  周线 MA200 需要 200 根周线（约 3.8 年），HYPE 历史不够，预计 2028 年 9 月中旬才会出现；在此之前图上的黄线是 200 日均线（每周取周内最后一天的值），蓝线是周线 MA50。本页面仅供学习参考，不构成投资建议。
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+(async function () {
+  const fmt = (v) => v == null ? '—' : '$' + v.toLocaleString('en-US', { maximumFractionDigits: v < 100 ? 2 : 0 });
+  const pct = (v) => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+
+  let payload;
+  try {
+    const res = await fetch('data/hype_weekly.json', { cache: 'no-cache' });
+    payload = await res.json();
+  } catch (e) {
+    document.getElementById('err').textContent = '数据加载失败：' + e;
+    return;
+  }
+
+  const candles = payload.candles.map(([t, o, h, l, c]) => ({ time: t, open: o, high: h, low: l, close: c }));
+  const sma = (n) => {
+    const out = []; let sum = 0;
+    candles.forEach((k, i) => {
+      sum += k.close;
+      if (i >= n) sum -= candles[i - n].close;
+      if (i >= n - 1) out.push({ time: k.time, value: sum / n });
+    });
+    return out;
+  };
+  const ma200w = sma(200), ma50 = sma(50);
+  const ma200 = payload.candles.filter((r) => r[6] != null).map((r) => ({ time: r[0], value: r[6] }));
+
+  // stats
+  const last = candles[candles.length - 1];
+  const m200 = ma200[ma200.length - 1].value, m50 = ma50[ma50.length - 1].value;
+  const m200ago = ma200[ma200.length - 5].value;
+  document.getElementById('s-close').textContent = fmt(last.close);
+  document.getElementById('s-ma200').textContent = ma200w.length ? fmt(ma200w[ma200w.length - 1].value) : '数据不足';
+  document.getElementById('s-ma200n').textContent = ma200w.length ? '' : `已有 ${candles.length}/200 根周线`;
+  document.getElementById('s-ma200d').textContent = fmt(m200);
+  document.getElementById('s-ma50').textContent = fmt(m50);
+  const dist = (last.close / m200 - 1) * 100;
+  const dEl = document.getElementById('s-dist'); dEl.textContent = pct(dist); dEl.className = 'v ' + (dist >= 0 ? 'pos' : 'neg');
+  const slope = (m200 / m200ago - 1) * 100;
+  const sEl = document.getElementById('s-slope'); sEl.textContent = pct(slope); sEl.className = 'v ' + (slope >= 0 ? 'pos' : 'neg');
+  document.getElementById('meta').textContent =
+    `${payload.source} · ${candles.length} 根周线 · 更新于 ${payload.updated.replace('T', ' ').replace('Z', ' UTC')}`;
+
+  // chart
+  const el = document.getElementById('chart');
+  const chart = LightweightCharts.createChart(el, {
+    layout: { background: { color: '#0f1117' }, textColor: '#c9ccd3' },
+    grid: { vertLines: { color: '#1b1f2a' }, horzLines: { color: '#1b1f2a' } },
+    rightPriceScale: { borderColor: '#2a2e39', mode: LightweightCharts.PriceScaleMode.Logarithmic },
+    timeScale: { borderColor: '#2a2e39' },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    localization: { priceFormatter: (p) => p < 100 ? p.toFixed(2) : Math.round(p).toLocaleString('en-US') },
+  });
+  const cs = chart.addCandlestickSeries({
+    upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
+    wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+  });
+  cs.setData(candles);
+  const s200 = chart.addLineSeries({ color: '#f5c542', lineWidth: 2, priceLineVisible: true, lastValueVisible: true, title: '200日均线' });
+  s200.setData(ma200);
+  if (ma200w.length) chart.addLineSeries({ color: '#ff8a3d', lineWidth: 2, title: '周线MA200' }).setData(ma200w);
+  const s50 = chart.addLineSeries({ color: '#5b9cf5', lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: 'MA50' });
+  s50.setData(ma50);
+  chart.timeScale().fitContent();
+
+  // legend on hover
+  const legend = document.getElementById('legend');
+  const map200 = new Map(ma200.map((p) => [p.time, p.value]));
+  const map50 = new Map(ma50.map((p) => [p.time, p.value]));
+  const showLegend = (k) => {
+    if (!k) return;
+    const d = new Date(k.time * 1000).toISOString().slice(0, 10);
+    legend.innerHTML = `${d}　开 ${fmt(k.open)}　高 ${fmt(k.high)}　低 ${fmt(k.low)}　收 ${fmt(k.close)}　` +
+      `<span style="color:#f5c542">200日均线 ${fmt(map200.get(k.time))}</span>　<span style="color:#5b9cf5">MA50 ${fmt(map50.get(k.time))}</span>`;
+  };
+  showLegend(last);
+  chart.subscribeCrosshairMove((p) => showLegend(p && p.time ? p.seriesData.get(cs) && { time: p.time, ...p.seriesData.get(cs) } : last));
+
+  // controls
+  let logOn = true, ma50On = true;
+  const bLog = document.getElementById('b-log'), bMa50 = document.getElementById('b-ma50');
+  bLog.onclick = () => {
+    logOn = !logOn; bLog.classList.toggle('on', logOn);
+    chart.priceScale('right').applyOptions({ mode: logOn ? LightweightCharts.PriceScaleMode.Logarithmic : LightweightCharts.PriceScaleMode.Normal });
+  };
+  bMa50.onclick = () => { ma50On = !ma50On; bMa50.classList.toggle('on', ma50On); s50.applyOptions({ visible: ma50On }); };
+  const range = (years) => {
+    if (!years) return chart.timeScale().fitContent();
+    chart.timeScale().setVisibleRange({ from: last.time - years * 365 * 86400, to: last.time + 4 * 7 * 86400 });
+  };
+  document.getElementById('b-all').onclick = () => range(0);
+  document.getElementById('b-1y').onclick = () => range(1);
+  document.getElementById('b-6m').onclick = () => range(0.5);
+
+  new ResizeObserver(() => chart.applyOptions({ width: el.clientWidth, height: el.clientHeight })).observe(el);
+})();
+</script>
+</body>
+</html>
