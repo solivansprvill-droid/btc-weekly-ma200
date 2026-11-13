@@ -31,3 +31,7 @@ python3 -m http.server 8000        # 打开 http://localhost:8000
 - MA200 = 最近 200 根周线收盘价的简单平均。
 - 最新一根周线可能还没收盘，数值会变动。
 - 仅供学习参考，不构成投资建议。
+
+## HYPE page
+
+`hype.html` shows HYPE weekly candles built from Hyperliquid HYPE/USDC spot daily candles (`scripts/fetch_hype.py` → `data/hype_weekly.json`). HYPE only launched on 2024-11-29, so a true weekly MA200 won't exist until about mid-September 2028. Until then the page draws the 200-day MA in its place, alongside the weekly MA50. The weekly MA200 line appears on its own once 200 weekly candles exist.
